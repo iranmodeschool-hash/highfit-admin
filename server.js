@@ -1,36 +1,51 @@
-import express from 'express';
+import http from 'http';
+import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import fs from 'fs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const app = express();
 const PORT = process.env.PORT || 3000;
 
-// مسیر پوشه dist که فایل‌های بیلد شده در آن قرار می‌گیرند
-const distPath = path.join(__dirname, 'dist');
-console.log('Serving static files from:', distPath);
-
-// بررسی اینکه آیا پوشه dist ساخته شده است یا خیر (برای دیباگ)
-if (!fs.existsSync(distPath)) {
-  console.error('CRITICAL WARNING: dist folder does not exist! The build might have failed.');
-}
-
-// سرو کردن فایل‌های استاتیک (CSS, JS, Images)
-app.use(express.static(distPath));
-
-// هدایت تمام مسیرها به index.html (برای React Router)
-app.get('*', (req, res) => {
-  const indexPath = path.join(distPath, 'index.html');
-  if (fs.existsSync(indexPath)) {
-    res.sendFile(indexPath);
-  } else {
-    res.status(500).send('Build (dist) folder is missing. Please check the build logs.');
+const server = http.createServer((req, res) => {
+  let filePath = path.join(__dirname, 'dist', req.url === '/' ? 'index.html' : req.url);
+  const extname = path.extname(filePath);
+  
+  let contentType = 'text/html';
+  switch (extname) {
+    case '.js': contentType = 'text/javascript'; break;
+    case '.css': contentType = 'text/css'; break;
+    case '.json': contentType = 'application/json'; break;
+    case '.png': contentType = 'image/png'; break;
+    case '.jpg': contentType = 'image/jpg'; break;
+    case '.svg': contentType = 'image/svg+xml'; break;
   }
+
+  fs.readFile(filePath, (error, content) => {
+    if (error) {
+      if(error.code == 'ENOENT'){
+        // اگر فایل پیدا نشد، index.html را برگردان (برای React Router)
+        fs.readFile(path.join(__dirname, 'dist', 'index.html'), (err, content) => {
+          if (err) {
+            res.writeHead(500);
+            res.end('Error: dist folder or index.html not found. The build might have failed.');
+          } else {
+            res.writeHead(200, { 'Content-Type': 'text/html' });
+            res.end(content, 'utf-8');
+          }
+        });
+      } else {
+        res.writeHead(500);
+        res.end('Sorry, check with the site admin for error: '+error.code);
+      }
+    } else {
+      res.writeHead(200, { 'Content-Type': contentType });
+      res.end(content, 'utf-8');
+    }
+  });
 });
 
-app.listen(PORT, () => {
+server.listen(PORT, () => {
   console.log(`Admin Panel is running on port ${PORT}`);
 });
